@@ -4,6 +4,8 @@
 
 <img src="https://img.shields.io/badge/Claude_Code-CLI-blue?style=flat-square" /> <img src="https://img.shields.io/badge/Discord.js-v14-5865F2?style=flat-square" /> <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square" />
 
+> **Purpose:** Disclaude exists for one reason — to let you use your existing Anthropic subscription (Pro/Max) from Discord instead of a terminal window. That's it. It runs the official `claude` CLI binary with your own authenticated session. No API key spoofing, no rate limit circumvention, no request manipulation, no header forging, no multi-accounting, no credential sharing, no automated session farming, no background polling. **Every API call is a genuine, human-initiated Claude Code CLI invocation — identical to you typing in a terminal.** This project does not bypass, exploit, or abuse any Anthropic service. It is a personal convenience tool for paying subscribers who want to access what they already paid for through a different interface.
+
 ---
 
 ## The story
