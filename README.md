@@ -1,4 +1,4 @@
-# Skylet
+# Disclaude
 
 **Talk to Claude Code from Discord.** One file. Real-time streaming. Persistent sessions. Full tool access.
 
@@ -14,7 +14,7 @@ Then one morning, Claude stopped responding. **"Third-party apps now draw from y
 
 But here's the thing: **you're not running a third-party app.** You're running the same `claude` CLI binary, with the same auth, the same model. You just want to talk to it from Discord instead of a terminal window. That's it.
 
-**Skylet is that bridge.** No orchestrator, no background automation, no session spam. Each Discord message spawns one native `claude -p` call — identical to typing in your terminal. When you stop talking, nothing runs. Zero footprint between messages.
+**disclaude is that bridge.** No orchestrator, no background automation, no session spam. Each Discord message spawns one native `claude -p` call — identical to typing in your terminal. When you stop talking, nothing runs. Zero footprint between messages.
 
 Your conversations persist. Your workspace context carries forward. Your SOUL.md personality stays. Claude has full tool access — Bash, file editing, web search, subagents, MCP tools, everything. It streams responses in real-time, creates threads, resumes sessions days later.
 
@@ -45,8 +45,8 @@ It's not a platform. It's not a framework. It's a 320-line bridge that lets you 
 ## Quick start
 
 ```bash
-git clone https://github.com/user/skylet.git
-cd skylet
+git clone https://github.com/user/disclaude.git
+cd disclaude
 npm install   # or: bun install
 bash setup.sh
 ```
@@ -61,17 +61,17 @@ The setup wizard checks requirements, guides you through Discord bot creation (o
 | Talk in DM | Just message it |
 | Continue in a thread | Reply in the thread (no @mention needed) |
 | Reset a conversation | Say `/new` |
-| Manage the bot | `node skylet.mjs` (or `bun skylet.mjs`) |
+| Manage the bot | `node disclaude.mjs` (or `bun disclaude.mjs`) |
 
 ## Management panel
 
 ```bash
-node skylet.mjs
+node disclaude.mjs
 ```
 
 ```
 ╔══════════════════════════════════════════╗
-║            Skylet                       ║
+║            disclaude                       ║
 ╚══════════════════════════════════════════╝
 
   Status: running  |  Model: opus  |  Name: Jarvis  |  Sessions: 3
@@ -106,7 +106,7 @@ You (Discord) → bot.mjs → claude -p → Anthropic API → streamed response 
 
 ## Workspace
 
-Customize Claude's behavior with files in `~/.claude-discord/workspace/`:
+Customize Claude's behavior with files in `~/.disclaude/workspace/`:
 
 | File | Purpose |
 |------|---------|
@@ -124,7 +124,7 @@ All config lives in `.env`:
 DISCORD_TOKEN=your_bot_token
 DISCORD_ALLOWED_USER=your_discord_id
 CLAUDE_MODEL=opus
-WORKSPACE=~/.claude-discord/workspace
+WORKSPACE=~/.disclaude/workspace
 SYSTEM_PROMPT_NAME=Jarvis
 ```
 
@@ -132,15 +132,15 @@ SYSTEM_PROMPT_NAME=Jarvis
 
 **Linux:**
 ```bash
-systemctl --user status claude-discord
-systemctl --user restart claude-discord
-journalctl --user -u claude-discord -f
+systemctl --user status disclaude
+systemctl --user restart disclaude
+journalctl --user -u disclaude -f
 ```
 
 **macOS:**
 ```bash
 launchctl list | grep claude
-tail -f ~/.claude-discord/logs/stdout.log
+tail -f ~/.disclaude/logs/stdout.log
 ```
 
 ## Migrating from OpenClaw
@@ -149,7 +149,7 @@ Run `bash setup.sh` — it detects your OpenClaw installation and offers to migr
 - Copies your Discord bot token (reads, never modifies OpenClaw config)
 - Copies workspace files (SOUL.md, MEMORY.md, etc.)
 - Stops the OpenClaw gateway
-- Starts Skylet as a drop-in replacement
+- Starts disclaude as a drop-in replacement
 
 Your OpenClaw config is left untouched. You can switch back anytime.
 

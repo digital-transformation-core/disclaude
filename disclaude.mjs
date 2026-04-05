@@ -8,9 +8,9 @@ import { execSync, spawn } from "node:child_process";
 // --- Paths ---
 const SCRIPT_DIR = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const ENV_FILE = join(SCRIPT_DIR, ".env");
-const DEFAULT_WORKSPACE = join(process.env.HOME, ".claude-discord/workspace");
-const SESSIONS_FILE = join(process.env.HOME, ".discord-claude/sessions.json");
-const SERVICE_NAME = "claude-discord";
+const DEFAULT_WORKSPACE = join(process.env.HOME, ".disclaude/workspace");
+const SESSIONS_FILE = join(process.env.HOME, ".disclaude/sessions.json");
+const SERVICE_NAME = "disclaude";
 
 // --- Env helpers ---
 function loadEnv() {
@@ -43,7 +43,7 @@ function botStatus() {
     }
     if (isMac()) {
       const out = execSync("launchctl list 2>/dev/null", { encoding: "utf8" });
-      return out.includes("com.claude.discord-bot");
+      return out.includes("com.disclaude");
     }
   } catch {}
   try {
@@ -60,7 +60,7 @@ function restartBot() {
       return true;
     }
     if (isMac()) {
-      execSync("launchctl stop com.claude.discord-bot 2>/dev/null; launchctl start com.claude.discord-bot 2>/dev/null");
+      execSync("launchctl stop com.disclaude 2>/dev/null; launchctl start com.disclaude 2>/dev/null");
       return true;
     }
   } catch {}
@@ -77,7 +77,7 @@ function restartBot() {
 
 function stopBot() {
   try { execSync(`systemctl --user stop ${SERVICE_NAME} 2>/dev/null`); } catch {}
-  try { execSync("launchctl stop com.claude.discord-bot 2>/dev/null"); } catch {}
+  try { execSync("launchctl stop com.disclaude 2>/dev/null"); } catch {}
   try { execSync("pkill -f 'node.*bot.mjs' 2>/dev/null"); } catch {}
 }
 
@@ -86,8 +86,8 @@ function viewLogs() {
     let proc;
     if (isLinux()) {
       proc = spawn("journalctl", ["--user", "-u", SERVICE_NAME, "-f", "--no-pager", "-n", "30"], { stdio: "inherit" });
-    } else if (isMac() && existsSync(join(process.env.HOME, ".claude-discord/logs/stdout.log"))) {
-      proc = spawn("tail", ["-f", join(process.env.HOME, ".claude-discord/logs/stdout.log")], { stdio: "inherit" });
+    } else if (isMac() && existsSync(join(process.env.HOME, ".disclaude/logs/stdout.log"))) {
+      proc = spawn("tail", ["-f", join(process.env.HOME, ".disclaude/logs/stdout.log")], { stdio: "inherit" });
     } else {
       console.log(chalk.dim("  No logs found"));
       setTimeout(resolve, 1500);
@@ -114,7 +114,7 @@ function header(subtitle) {
   console.clear();
   console.log();
   console.log(chalk.cyan.bold("  ╔══════════════════════════════════════════╗"));
-  console.log(chalk.cyan.bold("  ║            Skylet                       ║"));
+  console.log(chalk.cyan.bold("  ║            Disclaude                     ║"));
   console.log(chalk.cyan.bold("  ╚══════════════════════════════════════════╝"));
   if (subtitle) console.log(chalk.dim(`  ${subtitle}`));
   console.log();

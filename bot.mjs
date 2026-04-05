@@ -8,8 +8,8 @@ import { join } from "node:path";
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const ALLOWED_USER_ID = process.env.DISCORD_ALLOWED_USER;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "opus";
-const WORKSPACE = process.env.WORKSPACE || join(process.env.HOME, ".claude-discord/workspace");
-const DATA_DIR = join(process.env.HOME, ".discord-claude");
+const WORKSPACE = process.env.WORKSPACE || join(process.env.HOME, ".disclaude/workspace");
+const DATA_DIR = join(process.env.HOME, ".disclaude");
 const SESSIONS_FILE = join(DATA_DIR, "sessions.json");
 const TIMEOUT_MS = 300_000;
 const STREAM_EDIT_MS = 900; // Discord edit interval (rate limit: ~5 edits/5s)

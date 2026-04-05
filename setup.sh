@@ -25,8 +25,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BOT_FILE="$SCRIPT_DIR/bot.mjs"
 ENV_FILE="$SCRIPT_DIR/.env"
-SERVICE_NAME="claude-discord"
-DEFAULT_WORKSPACE="$HOME/.claude-discord/workspace"
+SERVICE_NAME="disclaude"
+DEFAULT_WORKSPACE="$HOME/.disclaude/workspace"
 OPENCLAW_CONFIG="$HOME/.openclaw/openclaw.json"
 OPENCLAW_WORKSPACE="$HOME/.openclaw/workspace"
 
@@ -45,7 +45,7 @@ print_header() {
   clear
   echo ""
   echo -e "${BOLD}${CYAN}  ╔══════════════════════════════════════════╗${NC}"
-  echo -e "${BOLD}${CYAN}  ║       Claude Discord Bot Setup          ║${NC}"
+  echo -e "${BOLD}${CYAN}  ║         Disclaude Setup                 ║${NC}"
   echo -e "${BOLD}${CYAN}  ╚══════════════════════════════════════════╝${NC}"
   echo ""
 }
@@ -463,8 +463,8 @@ EOF
 elif [ "$OS" = "Darwin" ]; then
   # --- macOS: launchd plist ---
   PLIST_DIR="$HOME/Library/LaunchAgents"
-  PLIST_FILE="$PLIST_DIR/com.claude.discord-bot.plist"
-  LOG_DIR="$HOME/.claude-discord/logs"
+  PLIST_FILE="$PLIST_DIR/com.disclaude.plist"
+  LOG_DIR="$HOME/.disclaude/logs"
   mkdir -p "$PLIST_DIR" "$LOG_DIR"
 
   # Build env vars from .env file
@@ -482,7 +482,7 @@ elif [ "$OS" = "Darwin" ]; then
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.claude.discord-bot</string>
+    <string>com.disclaude</string>
     <key>ProgramArguments</key>
     <array>
         <string>$(which node)</string>
@@ -513,7 +513,7 @@ EOF
   launchctl load "$PLIST_FILE" 2>/dev/null
 
   sleep 3
-  if launchctl list | grep -q 'com.claude.discord-bot'; then
+  if launchctl list | grep -q 'com.disclaude'; then
     SERVICE_INSTALLED=true
     print_ok "launchd service installed and started"
   else
@@ -546,15 +546,15 @@ if [ "$SERVICE_INSTALLED" = true ]; then
   elif [ "$OS" = "Darwin" ]; then
     echo -e "  ${DIM}Commands:${NC}"
     echo -e "    launchctl list | grep claude              ${DIM}# status${NC}"
-    echo -e "    tail -f ~/.claude-discord/logs/stdout.log ${DIM}# logs${NC}"
-    echo -e "    launchctl stop com.claude.discord-bot     ${DIM}# stop${NC}"
-    echo -e "    launchctl start com.claude.discord-bot    ${DIM}# start${NC}"
+    echo -e "    tail -f ~/.disclaude/logs/stdout.log ${DIM}# logs${NC}"
+    echo -e "    launchctl stop com.disclaude     ${DIM}# stop${NC}"
+    echo -e "    launchctl start com.disclaude    ${DIM}# start${NC}"
   fi
 
   echo ""
   echo -e "  ${DIM}Config:    $ENV_FILE${NC}"
   echo -e "  ${DIM}Workspace: $WORKSPACE${NC}"
-  echo -e "  ${DIM}Sessions:  ~/.discord-claude/sessions.json${NC}"
+  echo -e "  ${DIM}Sessions:  ~/.disclaude/sessions.json${NC}"
   echo ""
 else
   echo -e "  ${YELLOW}${BOLD}════════════════════════════════════════════${NC}"
@@ -566,7 +566,7 @@ else
   echo -e "    ${BOLD}export \$(cat .env | xargs) && node bot.mjs${NC}"
   echo ""
   echo -e "  Or with pm2:"
-  echo -e "    ${BOLD}npx pm2 start bot.mjs --name claude-discord${NC}"
+  echo -e "    ${BOLD}npx pm2 start bot.mjs --name disclaude${NC}"
   echo ""
   echo -e "  ${DIM}Config:    $ENV_FILE${NC}"
   echo -e "  ${DIM}Workspace: $WORKSPACE${NC}"

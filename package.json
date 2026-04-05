@@ -1,12 +1,12 @@
 {
-  "name": "skylet",
+  "name": "disclaude",
   "version": "1.0.0",
   "description": "Talk to Claude Code from Discord. One file, real-time streaming, persistent sessions.",
   "type": "module",
   "main": "bot.mjs",
   "scripts": {
     "start": "node bot.mjs",
-    "manage": "node skylet.mjs",
+    "manage": "node disclaude.mjs",
     "setup": "bash setup.sh"
   },
   "keywords": [
