@@ -63,12 +63,12 @@ The setup wizard checks requirements, guides you through Discord bot creation (o
 | Talk in DM | Just message it |
 | Continue in a thread | Reply in the thread (no @mention needed) |
 | Reset a conversation | Say `/new` |
-| Manage the bot | `node disclaude.mjs` (or `bun disclaude.mjs`) |
+| Manage the bot | `node manage.mjs` (or `bun manage.mjs`) |
 
 ## Management panel
 
 ```bash
-node disclaude.mjs
+node manage.mjs
 ```
 
 ```
@@ -98,7 +98,7 @@ node disclaude.mjs
 Each Discord message runs `claude -p --model opus` — the exact same binary and auth you use in your terminal.
 
 ```
-You (Discord) → bot.mjs → claude -p → Anthropic API → streamed response → Discord
+You (Discord) → server.mjs → claude -p → Anthropic API → streamed response → Discord
 ```
 
 - First message creates a session with your workspace context (SOUL.md, MEMORY.md, etc.)
@@ -176,8 +176,8 @@ If you're coming from OpenClaw, the setup migrates your Discord token, workspace
 | **MCP loopback server** | OpenClaw's gateway-managed tool server (sessions_send, sessions_list, subagents, image_generate, etc.). | Claude CLI has built-in subagent support. Other tools available via MCP servers you configure in `~/.claude/settings.json`. |
 | **Multi-channel routing** | OpenClaw routed messages across Discord, Telegram, Slack, etc. simultaneously. | Disclaude is Discord-only for now. Other channels on the roadmap. |
 | **Auto-reply / delivery system** | Smart reply queuing, delivery retry, typing TTL management. | Disclaude handles replies directly — simpler but no retry on failure. |
-| **Plugin hook system** | `message_received`, `thread_closed`, `reaction_received` hooks for custom behavior. | Not available. Bot logic is in `bot.mjs` — modify directly if needed. |
-| **Config schema UI** | Web-based configuration panel for gateway settings. | Use `node disclaude.mjs` TUI panel or edit `.env` directly. |
+| **Plugin hook system** | `message_received`, `thread_closed`, `reaction_received` hooks for custom behavior. | Not available. Bot logic is in `server.mjs` — modify directly if needed. |
+| **Config schema UI** | Web-based configuration panel for gateway settings. | Use `node manage.mjs` TUI panel or edit `.env` directly. |
 
 ### What DOES work natively (no migration needed)
 
@@ -234,7 +234,7 @@ systemctl --user stop disclaude && systemctl --user start claude-gateway
 
 Option 1 — use the management panel:
 ```bash
-node disclaude.mjs
+node manage.mjs
 # Select "Uninstall & revert to OpenClaw"
 ```
 
@@ -267,12 +267,12 @@ No. Each message runs `claude -p --model opus` — the exact same binary, auth, 
 
 Check the logs: `journalctl --user -u disclaude -f`. Common causes:
 - Claude CLI not authenticated: run `claude auth login`
-- Model rate-limited: wait a few minutes or switch to a different model via `node disclaude.mjs`
+- Model rate-limited: wait a few minutes or switch to a different model via `node manage.mjs`
 - Large MEMORY.md causing context overflow: the bot truncates files to 8KB but very large workspaces can still overflow
 
 **Can I use non-Anthropic models?**
 
-Yes. Claude Code CLI supports third-party models. Run `node disclaude.mjs` → Switch model → select Ollama, DeepSeek, OpenAI, Google, or enter a custom model ID. You'll need the provider's API key set in your environment.
+Yes. Claude Code CLI supports third-party models. Run `node manage.mjs` → Switch model → select Ollama, DeepSeek, OpenAI, Google, or enter a custom model ID. You'll need the provider's API key set in your environment.
 
 ---
 

@@ -24,7 +24,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BOT_FILE="$SCRIPT_DIR/bot.mjs"
+BOT_FILE="$SCRIPT_DIR/server.mjs"
 ENV_FILE="$SCRIPT_DIR/.env"
 SERVICE_NAME="disclaude"
 DEFAULT_WORKSPACE="$HOME/.disclaude/workspace"
@@ -562,7 +562,7 @@ if [ "$OPENCLAW_RUNNING" = true ]; then
 fi
 
 # Stop any previous disclaude instance
-pkill -f 'node bot.mjs' 2>/dev/null || true
+pkill -f 'node server.mjs' 2>/dev/null || true
 systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
 
 OS="$(uname)"
@@ -707,7 +707,7 @@ EOF
 else
   # --- Windows / other: no service manager ---
   print_warn "No service manager detected"
-  print_info "Run manually: cd $SCRIPT_DIR && node bot.mjs"
+  print_info "Run manually: cd $SCRIPT_DIR && node server.mjs"
 fi
 
 echo ""
@@ -723,7 +723,7 @@ if [ "$SERVICE_INSTALLED" = true ]; then
   echo -e "    2. @mention your bot or DM it"
   echo -e "    3. Say something — it will respond with streaming text"
   echo ""
-  echo -e "  ${BOLD}Manage later:${NC} node disclaude.mjs"
+  echo -e "  ${BOLD}Manage later:${NC} node manage.mjs"
   echo ""
 
   if [ "$OS" = "Linux" ]; then
@@ -767,10 +767,10 @@ else
   echo ""
   echo -e "  Start the bot:"
   echo -e "    ${BOLD}cd $SCRIPT_DIR${NC}"
-  echo -e "    ${BOLD}export \$(cat .env | xargs) && node bot.mjs${NC}"
+  echo -e "    ${BOLD}export \$(cat .env | xargs) && node server.mjs${NC}"
   echo ""
   echo -e "  Or with pm2:"
-  echo -e "    ${BOLD}npx pm2 start bot.mjs --name disclaude${NC}"
+  echo -e "    ${BOLD}npx pm2 start server.mjs --name disclaude${NC}"
   echo ""
   echo -e "  ${DIM}Config:    $ENV_FILE${NC}"
   echo -e "  ${DIM}Workspace: $WORKSPACE${NC}"

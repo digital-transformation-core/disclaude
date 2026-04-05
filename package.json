@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Talk to Claude Code from Discord. One file, real-time streaming, persistent sessions.",
   "type": "module",
-  "main": "bot.mjs",
+  "main": "server.mjs",
   "scripts": {
-    "start": "node bot.mjs",
-    "manage": "node disclaude.mjs",
+    "start": "node server.mjs",
+    "manage": "node manage.mjs",
     "setup": "bash setup.sh"
   },
   "keywords": [

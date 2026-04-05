@@ -47,7 +47,7 @@ function botStatus() {
     }
   } catch {}
   try {
-    execSync("pgrep -f 'node.*bot.mjs'", { encoding: "utf8" });
+    execSync("pgrep -f 'node.*server.mjs'", { encoding: "utf8" });
     return true;
   } catch {}
   return false;
@@ -65,9 +65,9 @@ function restartBot() {
     }
   } catch {}
   try {
-    execSync("pkill -f 'node.*bot.mjs' 2>/dev/null");
+    execSync("pkill -f 'node.*server.mjs' 2>/dev/null");
   } catch {}
-  spawn("node", [join(SCRIPT_DIR, "bot.mjs")], {
+  spawn("node", [join(SCRIPT_DIR, "server.mjs")], {
     detached: true, stdio: "ignore",
     env: { ...process.env, ...loadEnv() },
     cwd: SCRIPT_DIR,
@@ -78,7 +78,7 @@ function restartBot() {
 function stopBot() {
   try { execSync(`systemctl --user stop ${SERVICE_NAME} 2>/dev/null`); } catch {}
   try { execSync("launchctl stop com.disclaude 2>/dev/null"); } catch {}
-  try { execSync("pkill -f 'node.*bot.mjs' 2>/dev/null"); } catch {}
+  try { execSync("pkill -f 'node.*server.mjs' 2>/dev/null"); } catch {}
 }
 
 function viewLogs() {
