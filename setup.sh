@@ -1,23 +1,24 @@
 #!/bin/bash
 # ============================================================================
-# Claude Discord Bot — Interactive Setup
+# Disclaude — Interactive Setup
 # ============================================================================
 #
-# MIGRATION NOTICE:
-# If you previously used OpenClaw, this setup can automatically migrate your
-# existing Discord bot token and workspace files. Your OpenClaw configuration
-# at ~/.openclaw/openclaw.json will be read (NOT modified or deleted) to
-# extract:
-#   - Discord bot token (channels.discord.token)
-#   - Allowed user IDs (channels.discord.allowFrom)
-#   - Model preference (agents.defaults.model.primary)
-#   - Workspace files (SOUL.md, MEMORY.md, etc. from ~/.openclaw/workspace/)
+# MIGRATION NOTICE (OpenClaw users):
+# This setup can copy your existing Discord bot token and workspace files
+# from OpenClaw. Your OpenClaw configuration is READ-ONLY — nothing is
+# modified or deleted. The setup will:
 #
-# No OpenClaw files are modified or removed. You can run both side-by-side
-# or fully switch — your choice.
+#   1. Copy Discord bot token from ~/.openclaw/openclaw.json
+#   2. Copy workspace files (SOUL.md, MEMORY.md, etc.) to ~/.disclaude/
+#   3. ASK before stopping OpenClaw (you must confirm)
+#   4. Show how to switch back to OpenClaw at any time
+#   5. Show how to fully uninstall Disclaude and revert
 #
-# For fresh installs without OpenClaw, the setup will guide you through
-# creating a Discord bot and connecting it step by step.
+# OpenClaw and Disclaude share the same Discord bot token, so only one
+# can be active at a time. But switching between them is a single command.
+#
+# For fresh installs without OpenClaw, the setup guides you through
+# creating a Discord bot step by step.
 # ============================================================================
 
 set -e
@@ -411,13 +412,54 @@ echo ""
 # --- Step 6: Install & start service ---
 print_step 6 "Installing background service..."
 
-# Stop old services (best-effort)
+# Check if OpenClaw is running — they share the same Discord bot token
+# so they can't run at the same time
+OPENCLAW_RUNNING=false
+OPENCLAW_SERVICE=""
+for svc in openclaw-gateway claude-gateway; do
+  if systemctl --user is-active "$svc" &>/dev/null 2>&1; then
+    OPENCLAW_RUNNING=true
+    OPENCLAW_SERVICE="$svc"
+    break
+  fi
+done
+
+if [ "$OPENCLAW_RUNNING" = true ]; then
+  echo ""
+  echo -e "       ${YELLOW}${BOLD}OpenClaw gateway is currently running${NC} ($OPENCLAW_SERVICE)"
+  echo ""
+  echo -e "       ${DIM}Disclaude and OpenClaw both use the same Discord bot token,${NC}"
+  echo -e "       ${DIM}so they cannot run at the same time. Only one can connect${NC}"
+  echo -e "       ${DIM}to Discord with the same bot.${NC}"
+  echo ""
+  echo -e "       ${DIM}Your OpenClaw configuration will NOT be modified or deleted.${NC}"
+  echo -e "       ${DIM}You can switch back to OpenClaw anytime by running:${NC}"
+  echo -e "       ${DIM}  systemctl --user stop disclaude${NC}"
+  echo -e "       ${DIM}  systemctl --user start $OPENCLAW_SERVICE${NC}"
+  echo ""
+  prompt_choice "Would you like to switch from OpenClaw to Disclaude?" SWITCH_CHOICE \
+    "Yes — stop OpenClaw and start Disclaude" \
+    "No — keep OpenClaw running (exit setup)"
+
+  if [ "$SWITCH_CHOICE" = "2" ]; then
+    echo ""
+    print_ok "OpenClaw is still running. Disclaude config saved but not started."
+    echo ""
+    echo -e "       ${DIM}To switch later, run:${NC}"
+    echo -e "       ${DIM}  systemctl --user stop $OPENCLAW_SERVICE${NC}"
+    echo -e "       ${DIM}  systemctl --user start disclaude${NC}"
+    echo ""
+    exit 0
+  fi
+
+  # User confirmed — stop OpenClaw (but don't disable, so they can re-enable)
+  systemctl --user stop "$OPENCLAW_SERVICE" 2>/dev/null
+  print_ok "Stopped $OPENCLAW_SERVICE (can be re-enabled anytime)"
+fi
+
+# Stop any previous disclaude instance
 pkill -f 'node bot.mjs' 2>/dev/null || true
-systemctl --user stop openclaw-gateway 2>/dev/null && print_info "Stopped openclaw-gateway" || true
-systemctl --user stop claude-gateway 2>/dev/null && print_info "Stopped claude-gateway" || true
 systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
-systemctl --user disable openclaw-gateway 2>/dev/null || true
-systemctl --user disable claude-gateway 2>/dev/null || true
 
 OS="$(uname)"
 SERVICE_INSTALLED=false
@@ -550,6 +592,21 @@ if [ "$SERVICE_INSTALLED" = true ]; then
     echo -e "    launchctl stop com.disclaude     ${DIM}# stop${NC}"
     echo -e "    launchctl start com.disclaude    ${DIM}# start${NC}"
   fi
+
+  if [ -n "$OPENCLAW_SERVICE" ]; then
+    echo ""
+    echo -e "  ${DIM}Switch back to OpenClaw:${NC}"
+    echo -e "    systemctl --user stop $SERVICE_NAME"
+    echo -e "    systemctl --user start $OPENCLAW_SERVICE"
+  fi
+
+  echo ""
+  echo -e "  ${DIM}Uninstall Disclaude and revert to OpenClaw:${NC}"
+  echo -e "    systemctl --user stop $SERVICE_NAME"
+  echo -e "    systemctl --user disable $SERVICE_NAME"
+  echo -e "    rm ~/.config/systemd/user/$SERVICE_NAME.service"
+  echo -e "    systemctl --user daemon-reload"
+  [ -n "$OPENCLAW_SERVICE" ] && echo -e "    systemctl --user enable --now $OPENCLAW_SERVICE"
 
   echo ""
   echo -e "  ${DIM}Config:    $ENV_FILE${NC}"
