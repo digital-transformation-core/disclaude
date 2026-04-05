@@ -308,6 +308,19 @@ client.on("ready", () => {
   console.log(`Sessions: ${Object.keys(loadSessions()).length} persisted`);
 });
 
+// Handle DM channels that discord.js doesn't cache automatically
+client.on("raw", async (packet) => {
+  if (packet.t !== "MESSAGE_CREATE") return;
+  if (packet.d.guild_id) return; // Not a DM
+  // Ensure the DM channel is cached so messageCreate fires
+  const channel = client.channels.cache.get(packet.d.channel_id);
+  if (!channel) {
+    try {
+      await client.channels.fetch(packet.d.channel_id);
+    } catch {}
+  }
+});
+
 client.on("messageCreate", async (message) => {
   // Fetch partial messages/channels (required for DMs)
   if (message.partial) {
@@ -320,11 +333,6 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   const isDM = message.channel.isDMBased?.() || !message.guild;
-
-  // Debug: log all incoming messages to diagnose DM issues
-  if (isDM) {
-    console.log(`[DM] ${message.author.username} (${message.author.id}): ${message.content?.slice(0, 50)}`);
-  }
 
   if (ALLOWED_USER_ID && message.author.id !== ALLOWED_USER_ID) return;
 
