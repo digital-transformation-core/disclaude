@@ -215,6 +215,7 @@ async function mainMenu() {
         ...(running ? [{ name: chalk.red("Stop bot"), value: "stop" }] : []),
         { name: "View logs", value: "logs" },
         { name: "Re-run setup wizard", value: "setup" },
+        { name: chalk.red("Uninstall & revert to OpenClaw"), value: "revert" },
         { name: chalk.dim("Exit"), value: "exit" },
       ],
     });
@@ -238,6 +239,9 @@ async function mainMenu() {
         break;
       case "setup":
         execSync(`bash "${join(SCRIPT_DIR, "setup.sh")}"`, { stdio: "inherit" });
+        break;
+      case "revert":
+        await revertScreen();
         break;
       case "exit":
         console.log(); return;
@@ -497,6 +501,67 @@ async function sessionsScreen() {
     }
   }
   await sleep(1000);
+}
+
+// --- Revert screen ---
+async function revertScreen() {
+  header("Uninstall Disclaude");
+
+  // Detect which OpenClaw service exists
+  let ocService = null;
+  for (const svc of ["claude-gateway", "openclaw-gateway"]) {
+    try {
+      execSync(`systemctl --user cat ${svc} 2>/dev/null`, { encoding: "utf8" });
+      ocService = svc;
+      break;
+    } catch {}
+  }
+
+  console.log(chalk.yellow("  This will:"));
+  console.log(`  ${chalk.yellow("1.")} Stop the Disclaude bot`);
+  console.log(`  ${chalk.yellow("2.")} Disable the Disclaude systemd/launchd service`);
+  if (ocService) {
+    console.log(`  ${chalk.yellow("3.")} Re-enable and start OpenClaw (${ocService})`);
+  }
+  console.log();
+  console.log(chalk.dim("  Your Disclaude config and sessions will remain on disk."));
+  console.log(chalk.dim("  To fully remove: rm -rf ~/.disclaude"));
+  console.log();
+
+  const sure = await confirm({ message: "Proceed with uninstall?", default: false });
+  if (!sure) return;
+
+  // Stop and disable disclaude
+  stopBot();
+  try { execSync(`systemctl --user disable ${SERVICE_NAME} 2>/dev/null`); } catch {}
+  try { execSync(`rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}.service" 2>/dev/null`); } catch {}
+  try { execSync("systemctl --user daemon-reload 2>/dev/null"); } catch {}
+
+  // macOS
+  const plist = join(process.env.HOME, "Library/LaunchAgents/com.disclaude.plist");
+  if (existsSync(plist)) {
+    try { execSync(`launchctl unload "${plist}" 2>/dev/null`); } catch {}
+    try { execSync(`rm -f "${plist}"`); } catch {}
+  }
+
+  console.log(chalk.green("  ✓ Disclaude stopped and disabled"));
+
+  // Re-enable OpenClaw
+  if (ocService) {
+    try {
+      execSync(`systemctl --user enable --now ${ocService} 2>/dev/null`);
+      console.log(chalk.green(`  ✓ OpenClaw started (${ocService})`));
+    } catch {
+      console.log(chalk.yellow(`  ! Could not start ${ocService} — start it manually:`));
+      console.log(chalk.dim(`    systemctl --user start ${ocService}`));
+    }
+  }
+
+  console.log();
+  console.log(chalk.green.bold("  Done. OpenClaw is back in control."));
+  console.log();
+  await sleep(3000);
+  process.exit(0);
 }
 
 // --- Utility ---
