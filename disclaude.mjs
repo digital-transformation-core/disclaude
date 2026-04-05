@@ -84,18 +84,70 @@ function stopBot() {
 function viewLogs() {
   return new Promise((resolve) => {
     let proc;
+    const logFile = join(process.env.HOME, ".disclaude/logs/stdout.log");
+
     if (isLinux()) {
-      proc = spawn("journalctl", ["--user", "-u", SERVICE_NAME, "-f", "--no-pager", "-n", "30"], { stdio: "inherit" });
-    } else if (isMac() && existsSync(join(process.env.HOME, ".disclaude/logs/stdout.log"))) {
-      proc = spawn("tail", ["-f", join(process.env.HOME, ".disclaude/logs/stdout.log")], { stdio: "inherit" });
+      // Try the current service name, fall back to previous names
+      const services = [SERVICE_NAME, "claude-discord", "openclaw-gateway", "claude-gateway"];
+      let found = false;
+      for (const svc of services) {
+        try {
+          const status = execSync(`systemctl --user is-active ${svc} 2>/dev/null`, { encoding: "utf8" }).trim();
+          if (status === "active") {
+            proc = spawn("journalctl", ["--user", "-u", svc, "-f", "--no-pager", "-n", "40"], { stdio: "inherit" });
+            found = true;
+            break;
+          }
+        } catch {}
+      }
+      if (!found) {
+        // Try static log with recent entries
+        try {
+          proc = spawn("journalctl", ["--user", "-u", SERVICE_NAME, "--no-pager", "-n", "40"], { stdio: "inherit" });
+          found = true;
+        } catch {}
+      }
+      if (!found) {
+        console.log(chalk.dim("  No logs found. Is the bot running?"));
+        setTimeout(resolve, 2000);
+        return;
+      }
+    } else if (isMac() && existsSync(logFile)) {
+      proc = spawn("tail", ["-f", logFile], { stdio: "inherit" });
     } else {
-      console.log(chalk.dim("  No logs found"));
-      setTimeout(resolve, 1500);
+      console.log(chalk.dim("  No logs found. Is the bot running?"));
+      setTimeout(resolve, 2000);
       return;
     }
-    console.log(chalk.dim("\n  Press Ctrl+C to return to menu\n"));
-    proc.on("close", resolve);
-    process.on("SIGINT", () => { proc.kill(); resolve(); });
+
+    console.log(chalk.dim("\n  Press q or Ctrl+C to return to menu\n"));
+
+    const onSigint = () => { proc.kill(); };
+    process.on("SIGINT", onSigint);
+
+    // Listen for 'q' key to exit
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      const onKey = (key) => {
+        if (key[0] === 0x71 || key[0] === 0x03) { // 'q' or Ctrl+C
+          proc.kill();
+        }
+      };
+      process.stdin.on("data", onKey);
+      proc.on("close", () => {
+        process.stdin.removeListener("data", onKey);
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.removeListener("SIGINT", onSigint);
+        resolve();
+      });
+    } else {
+      proc.on("close", () => {
+        process.removeListener("SIGINT", onSigint);
+        resolve();
+      });
+    }
   });
 }
 
@@ -222,7 +274,7 @@ async function modelScreen() {
 
   let finalModel = model;
   if (model === "custom") {
-    finalModel = await input({ message: "Model ID:" });
+    finalModel = await input({ message: "Model ID (empty to cancel):" });
     if (!finalModel) return;
   }
 
@@ -270,7 +322,8 @@ async function personalityScreen() {
   if (action === "back") return;
 
   if (action === "name") {
-    const name = await input({ message: "Bot name:", default: env.SYSTEM_PROMPT_NAME || "Claude" });
+    const name = await input({ message: "Bot name (empty to cancel):", default: env.SYSTEM_PROMPT_NAME || "Claude" });
+    if (!name || name === env.SYSTEM_PROMPT_NAME) return;
     env.SYSTEM_PROMPT_NAME = name;
     saveEnv(env);
     console.log(chalk.green(`  ✓ Name set to: ${name}`));
@@ -282,9 +335,12 @@ async function personalityScreen() {
   }
 
   if (action === "edit") {
+    const proceed = await confirm({ message: "Open SOUL.md in editor?", default: true });
+    if (!proceed) return;
     mkdirSync(ws, { recursive: true });
     const current = existsSync(soulFile) ? readFileSync(soulFile, "utf8") : "# SOUL.md\n\nDefine your bot's personality here.\n";
     const edited = await editor({ message: "Edit SOUL.md", default: current, postfix: ".md" });
+    if (edited === current) { console.log(chalk.dim("  No changes")); await sleep(1000); return; }
     writeFileSync(soulFile, edited);
     console.log(chalk.green("  ✓ SOUL.md saved"));
     if (botStatus()) {
@@ -359,12 +415,15 @@ async function workspaceScreen() {
 
     let filePath;
     if (file === "new") {
-      const name = await input({ message: "Filename:" });
+      const name = await input({ message: "Filename (empty to cancel):" });
       if (!name) continue;
       filePath = join(ws, name);
     } else {
       filePath = join(ws, file);
     }
+
+    const proceed = await confirm({ message: `Open ${filePath.split("/").pop()} in editor?`, default: true });
+    if (!proceed) continue;
 
     const current = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
     const edited = await editor({
@@ -372,6 +431,7 @@ async function workspaceScreen() {
       default: current,
       postfix: ".md",
     });
+    if (edited === current) { console.log(chalk.dim("  No changes")); await sleep(800); continue; }
     writeFileSync(filePath, edited);
     console.log(chalk.green(`  ✓ Saved`));
 
