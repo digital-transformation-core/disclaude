@@ -6,11 +6,21 @@
   "main": "bot.mjs",
   "scripts": {
     "start": "node bot.mjs",
+    "manage": "node skylet.mjs",
     "setup": "bash setup.sh"
   },
-  "keywords": ["discord", "claude", "claude-code", "ai", "bot", "streaming"],
+  "keywords": [
+    "discord",
+    "claude",
+    "claude-code",
+    "ai",
+    "bot",
+    "streaming"
+  ],
   "license": "MIT",
   "dependencies": {
+    "@inquirer/prompts": "^8.3.2",
+    "chalk": "^5.6.2",
     "discord.js": "^14.18.0"
   }
 }
