@@ -48,8 +48,31 @@ function cleanup() {
   for (const [, proc] of activeProcs) proc.kill("SIGTERM");
   activeProcs.clear();
 }
-process.on("SIGINT", () => { cleanup(); process.exit(0); });
-process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+process.on("SIGINT", () => { shutdown("SIGINT"); });
+process.on("SIGTERM", () => { shutdown("SIGTERM"); });
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err.message);
+  // Don't crash — keep the bot running
+});
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled rejection:", err?.message || err);
+  // Don't crash — keep the bot running
+});
+
+async function shutdown(signal) {
+  console.log(`${signal} received, shutting down...`);
+  // Wait for active claude processes to finish (up to 10s)
+  if (activeProcs.size > 0) {
+    console.log(`Waiting for ${activeProcs.size} active response(s) to finish...`);
+    const deadline = Date.now() + 10_000;
+    while (activeProcs.size > 0 && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  cleanup();
+  client?.destroy();
+  process.exit(0);
+}
 
 // --- Workspace context ---
 
@@ -345,6 +368,26 @@ client.on("ready", () => {
   console.log(`Sessions: ${Object.keys(loadSessions()).length} persisted`);
 });
 
+client.on("error", (err) => {
+  console.error("Discord client error:", err.message);
+});
+
+client.on("warn", (msg) => {
+  console.warn("Discord warning:", msg);
+});
+
+client.on("shardDisconnect", (event, id) => {
+  console.warn(`Discord shard ${id} disconnected (code ${event.code}). Reconnecting...`);
+});
+
+client.on("shardReconnecting", (id) => {
+  console.log(`Discord shard ${id} reconnecting...`);
+});
+
+client.on("shardResume", (id) => {
+  console.log(`Discord shard ${id} resumed`);
+});
+
 // Handle DM channels that discord.js doesn't cache automatically
 client.on("raw", async (packet) => {
   if (packet.t !== "MESSAGE_CREATE") return;
@@ -492,4 +535,25 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-client.login(DISCORD_TOKEN);
+// Login with retry
+async function login() {
+  const MAX_RETRIES = 5;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await client.login(DISCORD_TOKEN);
+      return;
+    } catch (err) {
+      console.error(`Login attempt ${attempt}/${MAX_RETRIES} failed:`, err.message);
+      if (attempt < MAX_RETRIES) {
+        const delay = Math.min(5000 * attempt, 30000);
+        console.log(`Retrying in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        console.error("All login attempts failed. Exiting.");
+        process.exit(1);
+      }
+    }
+  }
+}
+
+login();
