@@ -64,7 +64,8 @@ function buildSystemPrompt() {
     } catch {}
   }
   const ws = sections.length > 0 ? "\n\n# Workspace Context\n\n" + sections.join("\n\n---\n\n") : "";
-  systemPromptCache = `You are Jarvis, a personal assistant communicating via Discord.
+  const name = process.env.SYSTEM_PROMPT_NAME || "Claude";
+  systemPromptCache = `You are ${name}, a personal assistant communicating via Discord.
 Keep responses concise and conversational — this is chat, not a document.
 You have full conversation history in this session. Each Discord channel/thread has its own persistent session.
 When the user says /new, start fresh (the session will be reset).${ws}`;
