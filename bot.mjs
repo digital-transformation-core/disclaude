@@ -1,8 +1,11 @@
 import { Client, GatewayIntentBits, Partials } from "discord.js";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { createWriteStream } from "node:fs";
+import { tmpdir } from "node:os";
 
 // --- Config ---
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -145,10 +148,39 @@ Always respond in the same language the user writes in. Match their language nat
 When the user says /new, start fresh (the session will be reset).${locationHint}${globalContext}${channelSection}`;
 }
 
+// --- Attachment handling ---
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]);
+const ALLOWED_EXTS = new Set([...IMAGE_EXTS, "txt", "md", "json", "csv", "js", "ts", "py", "html", "css", "xml", "yaml", "yml", "toml", "sh", "log", "pdf"]);
+
+async function downloadAttachments(attachments) {
+  const files = [];
+  const tempDir = join(tmpdir(), `disclaude-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+
+  for (const att of attachments.values()) {
+    const ext = att.name?.split(".").pop()?.toLowerCase() || "";
+    if (!ALLOWED_EXTS.has(ext)) continue;
+    if (att.size > 10 * 1024 * 1024) continue; // Skip >10MB
+
+    const filePath = join(tempDir, att.name);
+    try {
+      const res = await fetch(att.url);
+      if (!res.ok) continue;
+      await pipeline(res.body, createWriteStream(filePath));
+      files.push({ path: filePath, name: att.name, isImage: IMAGE_EXTS.has(ext) });
+    } catch {}
+  }
+
+  return { files, cleanup: () => {
+    for (const f of files) { try { unlinkSync(f.path); } catch {} }
+    try { unlinkSync(tempDir); } catch {} // rmdir
+  }};
+}
+
 // --- Run claude with real-time streaming ---
 const busy = new Set();
 
-function runClaude(channelId, text, systemPrompt, onDelta) {
+function runClaude(channelId, text, systemPrompt, onDelta, imagePaths) {
   return new Promise((resolve) => {
     const existingSession = getSessionId(channelId);
     const isResume = !!existingSession;
@@ -166,6 +198,13 @@ function runClaude(channelId, text, systemPrompt, onDelta) {
       args.push("--resume", existingSession);
     } else {
       args.push("--append-system-prompt", systemPrompt);
+    }
+
+    // Add image files
+    if (imagePaths?.length > 0) {
+      for (const img of imagePaths) {
+        args.push("--image", img);
+      }
     }
 
     const proc = spawn("claude", args, {
@@ -343,7 +382,9 @@ client.on("messageCreate", async (message) => {
   let text = message.content
     .replace(new RegExp(`<@!?${client.user.id}>`, "g"), "")
     .trim();
-  if (!text) return;
+
+  const hasAttachments = message.attachments.size > 0;
+  if (!text && !hasAttachments) return;
 
   const channelId = message.channel.id;
 
@@ -381,6 +422,28 @@ client.on("messageCreate", async (message) => {
   }
 
   try {
+    // Download attachments
+    let attachmentData = null;
+    let imagePaths = [];
+    if (hasAttachments) {
+      attachmentData = await downloadAttachments(message.attachments);
+      const images = attachmentData.files.filter(f => f.isImage);
+      const textFiles = attachmentData.files.filter(f => !f.isImage);
+      imagePaths = images.map(f => f.path);
+
+      // Append text file contents to the prompt
+      for (const f of textFiles) {
+        try {
+          const content = readFileSync(f.path, "utf8");
+          text += `\n\n--- File: ${f.name} ---\n${content}`;
+        } catch {}
+      }
+
+      if (images.length > 0) console.log(`[${label}] ${images.length} image(s) attached`);
+      if (textFiles.length > 0) console.log(`[${label}] ${textFiles.length} text file(s) attached`);
+      if (!text) text = "Describe the attached file(s).";
+    }
+
     let replyMsg;
     if (createdThread) {
       replyMsg = await replyChannel.send("\u231B Thinking...");
@@ -399,7 +462,7 @@ client.on("messageCreate", async (message) => {
     };
     let editTimer = setInterval(doEdit, STREAM_EDIT_MS);
 
-    let result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; });
+    let result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; }, imagePaths);
 
     clearInterval(editTimer);
 
@@ -417,7 +480,7 @@ client.on("messageCreate", async (message) => {
       lastShown = "";
       await replyMsg.edit("\uD83D\uDD04 Retrying...").catch(() => {});
       editTimer = setInterval(doEdit, STREAM_EDIT_MS);
-      result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; });
+      result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; }, imagePaths);
       clearInterval(editTimer);
       if (result.sessionId && !result.error) {
         setSessionId(channelId, result.sessionId);
@@ -436,6 +499,7 @@ client.on("messageCreate", async (message) => {
     await message.reply("Something went wrong.").catch(() => {});
   } finally {
     busy.delete(channelId);
+    if (attachmentData) attachmentData.cleanup();
   }
 });
 
