@@ -55,6 +55,47 @@ bash setup.sh
 
 The setup wizard checks requirements, guides you through Discord bot creation (or migrates from OpenClaw), and starts the bot as a background service.
 
+## Running
+
+**With setup wizard** (recommended for first time):
+```bash
+bash setup.sh
+```
+Installs as a background service (systemd on Linux, launchd on macOS). Auto-starts on boot, auto-restarts on crash.
+
+**Manual start:**
+```bash
+# Load env and run
+export $(cat .env | xargs) && node server.mjs
+```
+
+**With pm2:**
+```bash
+npx pm2 start server.mjs --name disclaude
+npx pm2 save    # persist across reboots
+```
+
+**With Docker** (coming soon):
+```bash
+docker run -d --env-file .env disclaude
+```
+
+**Service commands (Linux):**
+```bash
+systemctl --user status disclaude      # check status
+systemctl --user restart disclaude     # restart
+systemctl --user stop disclaude        # stop
+journalctl --user -u disclaude -f      # follow logs
+```
+
+**Service commands (macOS):**
+```bash
+launchctl list | grep disclaude        # check status
+launchctl stop com.disclaude           # stop
+launchctl start com.disclaude          # start
+tail -f ~/.disclaude/logs/stdout.log   # follow logs
+```
+
 ## Usage
 
 | Action | How |
