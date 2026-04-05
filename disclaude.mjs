@@ -149,7 +149,7 @@ async function mainMenu() {
 
     const running = botStatus();
 
-    const action = await select({ loop: false,
+    const action = await select({ loop: false, pageSize: 20,
       message: "What would you like to do?",
       choices: [
         { name: "Switch model", value: "model" },
@@ -200,7 +200,7 @@ async function modelScreen() {
   console.log(chalk.dim(`  Current: ${env.CLAUDE_MODEL || "opus"}`));
   console.log();
 
-  const model = await select({ loop: false,
+  const model = await select({ loop: false, pageSize: 20,
     message: "Select model",
     choices: [
       { name: `opus              ${chalk.dim("Anthropic — most capable")}`, value: "opus" },
@@ -257,7 +257,7 @@ async function personalityScreen() {
   }
   console.log();
 
-  const action = await select({ loop: false,
+  const action = await select({ loop: false, pageSize: 20,
     message: "What would you like to change?",
     choices: [
       { name: "Change bot name", value: "name" },
@@ -295,7 +295,7 @@ async function personalityScreen() {
   }
 
   if (action === "preset") {
-    const preset = await select({ loop: false,
+    const preset = await select({ loop: false, pageSize: 20,
       message: "Choose a personality",
       choices: [
         { name: `Jarvis   ${chalk.dim("Professional, concise, opinionated")}`, value: "jarvis" },
@@ -354,7 +354,7 @@ async function workspaceScreen() {
       { name: chalk.dim("← Back"), value: "back" },
     );
 
-    const file = await select({ loop: false, message: "Edit a file", choices });
+    const file = await select({ loop: false, pageSize: 20, message: "Edit a file", choices });
     if (file === "back") return;
 
     let filePath;
@@ -403,7 +403,7 @@ async function sessionsScreen() {
   }
   console.log();
 
-  const action = await select({ loop: false,
+  const action = await select({ loop: false, pageSize: 20,
     message: "Action",
     choices: [
       { name: "Clear all sessions", value: "clear" },
@@ -423,7 +423,7 @@ async function sessionsScreen() {
   }
 
   if (action === "one") {
-    const ch = await select({ loop: false,
+    const ch = await select({ loop: false, pageSize: 20,
       message: "Which channel?",
       choices: [
         ...keys.map((k) => ({ name: `${k} → ${sessions[k].slice(0, 8)}...`, value: k })),
