@@ -1,7 +1,7 @@
 import { Client, GatewayIntentBits, Partials } from "discord.js";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 // --- Config ---
@@ -12,7 +12,7 @@ const WORKSPACE = process.env.WORKSPACE || join(process.env.HOME, ".disclaude/wo
 const DATA_DIR = join(process.env.HOME, ".disclaude");
 const SESSIONS_FILE = join(DATA_DIR, "sessions.json");
 const TIMEOUT_MS = 300_000;
-const STREAM_EDIT_MS = 900; // Discord edit interval (rate limit: ~5 edits/5s)
+const STREAM_EDIT_MS = 900;
 
 if (!DISCORD_TOKEN) {
   console.error("Set DISCORD_TOKEN env var");
@@ -49,33 +49,105 @@ process.on("SIGINT", () => { cleanup(); process.exit(0); });
 process.on("SIGTERM", () => { cleanup(); process.exit(0); });
 
 // --- Workspace context ---
-let systemPromptCache = null;
-function buildSystemPrompt() {
-  if (systemPromptCache) return systemPromptCache;
-  const files = ["SOUL.md", "MEMORY.md", "IDENTITY.md", "USER.md", "TOOLS.md"];
+
+/** Load a file from workspace, with optional truncation */
+function loadWorkspaceFile(filename, maxChars = 8000) {
+  try {
+    const content = readFileSync(join(WORKSPACE, filename), "utf8").trim();
+    if (!content) return null;
+    return content.length > maxChars
+      ? content.slice(0, maxChars) + "\n...(truncated)"
+      : content;
+  } catch { return null; }
+}
+
+/**
+ * Load channel-specific context files.
+ * Looks for files in WORKSPACE/channels/<channelName>/ (e.g. channels/financial/CONTEXT.md)
+ * Falls back to WORKSPACE/CHANNEL-<channelName>.md (e.g. CHANNEL-financial.md)
+ */
+function loadChannelContext(channelName) {
+  if (!channelName) return null;
+  const sanitized = channelName.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  if (!sanitized) return null;
+
   const sections = [];
-  for (const file of files) {
+
+  // Check for channel-specific directory
+  const channelDir = join(WORKSPACE, "channels", sanitized);
+  if (existsSync(channelDir)) {
     try {
-      const content = readFileSync(join(WORKSPACE, file), "utf8").trim();
-      if (content) {
-        const t = content.length > 8000 ? content.slice(0, 8000) + "\n...(truncated)" : content;
-        sections.push(`## ${file}\n${t}`);
+      for (const file of readdirSync(channelDir).sort()) {
+        if (!file.endsWith(".md")) continue;
+        const content = readFileSync(join(channelDir, file), "utf8").trim();
+        if (content) {
+          const t = content.length > 6000 ? content.slice(0, 6000) + "\n...(truncated)" : content;
+          sections.push(`### ${file}\n${t}`);
+        }
       }
     } catch {}
   }
-  const ws = sections.length > 0 ? "\n\n# Workspace Context\n\n" + sections.join("\n\n---\n\n") : "";
+
+  // Check for single channel context file
+  const singleFile = join(WORKSPACE, `CHANNEL-${sanitized}.md`);
+  if (existsSync(singleFile)) {
+    const content = loadWorkspaceFile(`CHANNEL-${sanitized}.md`, 6000);
+    if (content) sections.push(content);
+  }
+
+  return sections.length > 0 ? sections.join("\n\n") : null;
+}
+
+/**
+ * Build system prompt with:
+ * - Global workspace files (SOUL.md, MEMORY.md, etc.)
+ * - Channel-specific context (if channel name provided)
+ * - Channel/thread metadata so Claude knows where it is
+ */
+function buildSystemPrompt(context) {
+  const { channelName, channelTopic, threadName, isDM } = context;
+
+  // Global workspace files
+  const globalFiles = ["SOUL.md", "MEMORY.md", "IDENTITY.md", "USER.md", "TOOLS.md"];
+  const sections = [];
+  for (const file of globalFiles) {
+    const content = loadWorkspaceFile(file);
+    if (content) sections.push(`## ${file}\n${content}`);
+  }
+  const globalContext = sections.length > 0
+    ? "\n\n# Workspace Context\n\n" + sections.join("\n\n---\n\n")
+    : "";
+
+  // Channel-specific context
+  const channelCtx = loadChannelContext(channelName);
+  const channelSection = channelCtx
+    ? `\n\n# Channel Context: #${channelName}\n\n${channelCtx}`
+    : "";
+
+  // Where are we?
+  let locationHint = "";
+  if (isDM) {
+    locationHint = "\nYou are in a private DM conversation.";
+  } else if (threadName) {
+    locationHint = `\nYou are in Discord thread "${threadName}" in channel #${channelName || "unknown"}.`;
+    if (channelTopic) locationHint += ` Channel topic: ${channelTopic}`;
+    locationHint += "\nContinue the thread's conversation naturally. You have the full history from this thread.";
+  } else if (channelName) {
+    locationHint = `\nYou are in Discord channel #${channelName}.`;
+    if (channelTopic) locationHint += ` Topic: ${channelTopic}`;
+  }
+
   const name = process.env.SYSTEM_PROMPT_NAME || "Claude";
-  systemPromptCache = `You are ${name}, a personal assistant communicating via Discord.
+  return `You are ${name}, a personal assistant communicating via Discord.
 Keep responses concise and conversational — this is chat, not a document.
 You have full conversation history in this session. Each Discord channel/thread has its own persistent session.
-When the user says /new, start fresh (the session will be reset).${ws}`;
-  return systemPromptCache;
+When the user says /new, start fresh (the session will be reset).${locationHint}${globalContext}${channelSection}`;
 }
 
 // --- Run claude with real-time streaming ---
 const busy = new Set();
 
-function runClaude(channelId, text, onDelta) {
+function runClaude(channelId, text, systemPrompt, onDelta) {
   return new Promise((resolve) => {
     const existingSession = getSessionId(channelId);
     const isResume = !!existingSession;
@@ -92,7 +164,7 @@ function runClaude(channelId, text, onDelta) {
     if (isResume) {
       args.push("--resume", existingSession);
     } else {
-      args.push("--append-system-prompt", buildSystemPrompt());
+      args.push("--append-system-prompt", systemPrompt);
     }
 
     const proc = spawn("claude", args, {
@@ -115,7 +187,6 @@ function runClaude(channelId, text, onDelta) {
         const d = JSON.parse(line);
         if (d.session_id) sessionId = d.session_id;
 
-        // Stream deltas — the real-time text chunks
         if (d.type === "stream_event") {
           const evt = d.event;
           if (evt?.type === "content_block_delta" && evt.delta?.type === "text_delta") {
@@ -173,7 +244,6 @@ async function sendFinalLong(channel, text, existingMsg) {
     await existingMsg.edit(text).catch(() => {});
     return;
   }
-  // Edit first chunk into existing message, send rest as new messages
   let remaining = text;
   const first = remaining.slice(0, maxLen);
   remaining = remaining.slice(maxLen);
@@ -187,6 +257,35 @@ async function sendFinalLong(channel, text, existingMsg) {
     await channel.send(remaining.slice(0, end));
     remaining = remaining.slice(end);
   }
+}
+
+/** Resolve the parent channel name for a thread */
+function resolveChannelInfo(message) {
+  const channel = message.channel;
+  const isDM = !message.guild;
+
+  if (isDM) {
+    return { channelName: null, channelTopic: null, threadName: null, isDM: true };
+  }
+
+  // Thread — get parent channel info
+  if (channel.isThread?.()) {
+    const parent = channel.parent;
+    return {
+      channelName: parent?.name || null,
+      channelTopic: parent?.topic || null,
+      threadName: channel.name || null,
+      isDM: false,
+    };
+  }
+
+  // Regular channel
+  return {
+    channelName: channel.name || null,
+    channelTopic: channel.topic || null,
+    threadName: null,
+    isDM: false,
+  };
 }
 
 // --- Discord bot ---
@@ -234,8 +333,13 @@ client.on("messageCreate", async (message) => {
   }
 
   const hasSession = !!getSessionId(channelId);
-  console.log(`[${channelId}] ${message.author.username}: ${text.slice(0, 80)}${hasSession ? " (resume)" : " (new)"}`);
+  const channelInfo = resolveChannelInfo(message);
+  const label = channelInfo.threadName || channelInfo.channelName || "DM";
+  console.log(`[${label}] ${message.author.username}: ${text.slice(0, 80)}${hasSession ? " (resume)" : " (new)"}`);
   busy.add(channelId);
+
+  // Build system prompt with channel context (per-channel, not cached globally)
+  const systemPrompt = buildSystemPrompt(channelInfo);
 
   // Determine reply channel (create thread for channel mentions)
   let replyChannel = message.channel;
@@ -243,7 +347,7 @@ client.on("messageCreate", async (message) => {
   if (!isDM && !isThread && isMentioned) {
     try {
       replyChannel = await message.startThread({
-        name: text.slice(0, 90) || "Jarvis",
+        name: text.slice(0, 90) || "Claude",
         autoArchiveDuration: 60,
       });
       createdThread = true;
@@ -251,35 +355,27 @@ client.on("messageCreate", async (message) => {
   }
 
   try {
-    // Send initial placeholder
     let replyMsg;
     if (createdThread) {
-      replyMsg = await replyChannel.send("⌛ Thinking...");
+      replyMsg = await replyChannel.send("\u231B Thinking...");
     } else {
-      replyMsg = await message.reply("⌛ Thinking...");
+      replyMsg = await message.reply("\u231B Thinking...");
     }
 
-    // Simple streaming: edit message with current text every 900ms
+    // Streaming
     let currentText = "";
     let lastShown = "";
-    let editTimer = null;
-
     const doEdit = () => {
       if (currentText === lastShown) return;
       lastShown = currentText;
       const display = currentText.length > 1900 ? currentText.slice(0, 1900) : currentText;
       replyMsg.edit(display).catch(() => {});
     };
+    let editTimer = setInterval(doEdit, STREAM_EDIT_MS);
 
-    // Tick loop: fire edit at fixed interval while streaming
-    editTimer = setInterval(doEdit, STREAM_EDIT_MS);
-
-    let result = await runClaude(channelId, text, (text) => {
-      currentText = text;
-    });
+    let result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; });
 
     clearInterval(editTimer);
-    editTimer = null;
 
     // Save session
     if (result.sessionId && !result.error) {
@@ -289,13 +385,13 @@ client.on("messageCreate", async (message) => {
 
     // Auto-retry on resume failure
     if (result.error && hasSession) {
-      console.log(`[${channelId}] Resume failed, retrying fresh`);
+      console.log(`[${label}] Resume failed, retrying fresh`);
       clearSession(channelId);
       currentText = "";
       lastShown = "";
-      await replyMsg.edit("🔄 Retrying...").catch(() => {});
+      await replyMsg.edit("\uD83D\uDD04 Retrying...").catch(() => {});
       editTimer = setInterval(doEdit, STREAM_EDIT_MS);
-      result = await runClaude(channelId, text, (t) => { currentText = t; });
+      result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; });
       clearInterval(editTimer);
       if (result.sessionId && !result.error) {
         setSessionId(channelId, result.sessionId);
@@ -303,12 +399,12 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // Final edit — only if content differs from last streamed edit
+    // Final edit
     if (result.text !== lastShown) {
       await sendFinalLong(replyChannel, result.text, replyMsg);
     }
 
-    console.log(`[${channelId}] OK (${result.text.length}c, session=${result.sessionId?.slice(0, 8) || "?"})`);
+    console.log(`[${label}] OK (${result.text.length}c, session=${result.sessionId?.slice(0, 8) || "?"})`);
   } catch (err) {
     console.error(`Error:`, err.message);
     await message.reply("Something went wrong.").catch(() => {});
