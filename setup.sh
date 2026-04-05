@@ -405,6 +405,71 @@ print(len(dc))
       print_info "No active sessions to migrate"
     fi
   fi
+
+  # Migrate MCP servers from OpenClaw to Claude CLI project settings
+  # Claude CLI reads MCP config from ~/.claude/projects/<cwd-hash>/settings.json
+  MCP_MIGRATED=$(python3 -c "
+import json, os
+
+# Load OpenClaw MCP config
+try:
+    cfg = json.load(open('$OPENCLAW_CONFIG'))
+    mcp = cfg.get('mcp', {}).get('servers', {})
+    if not mcp:
+        print(0)
+        exit()
+except:
+    print(0)
+    exit()
+
+# Find the Claude CLI project settings for this workspace
+workspace = '$OPENCLAW_WORKSPACE'
+# Claude CLI uses path with / replaced by - and leading - stripped
+project_key = workspace.replace('/', '-')
+if project_key.startswith('-'):
+    project_key = project_key[1:]
+project_dir = os.path.expanduser(f'~/.claude/projects/{project_key}')
+settings_file = os.path.join(project_dir, 'settings.json')
+
+os.makedirs(project_dir, exist_ok=True)
+
+# Load existing project settings
+try:
+    settings = json.load(open(settings_file))
+except:
+    settings = {}
+
+existing_mcp = settings.get('mcpServers', {})
+added = 0
+
+for name, server in mcp.items():
+    if name in existing_mcp:
+        continue
+    # Convert OpenClaw MCP format to Claude CLI format
+    entry = {}
+    if server.get('command'):
+        entry['command'] = server['command']
+    if server.get('args'):
+        entry['args'] = server['args']
+    if server.get('env'):
+        entry['env'] = server['env']
+    if server.get('url'):
+        entry['url'] = server['url']
+    if not server.get('enabled', True):
+        entry['disabled'] = True
+    if entry:
+        existing_mcp[name] = entry
+        added += 1
+
+if added > 0:
+    settings['mcpServers'] = existing_mcp
+    json.dump(settings, open(settings_file, 'w'), indent=2)
+
+print(added)
+" 2>/dev/null)
+  if [ -n "$MCP_MIGRATED" ] && [ "$MCP_MIGRATED" -gt 0 ]; then
+    print_ok "Migrated $MCP_MIGRATED MCP tool servers from OpenClaw"
+  fi
 else
   # Fresh setup — create new workspace
   WORKSPACE="$DEFAULT_WORKSPACE"
