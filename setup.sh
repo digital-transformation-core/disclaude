@@ -531,13 +531,34 @@ EOF
   systemctl --user daemon-reload
   systemctl --user enable "$SERVICE_NAME" 2>/dev/null
   systemctl --user start "$SERVICE_NAME"
-  sleep 3
 
-  if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
+  # Live verification: wait for bot to connect to Discord
+  echo ""
+  echo -ne "       Connecting to Discord "
+  BOT_READY=false
+  for i in $(seq 1 20); do
+    if journalctl --user -u "$SERVICE_NAME" --no-pager -n 5 2>/dev/null | grep -q "Bot online"; then
+      BOT_READY=true
+      break
+    fi
+    echo -ne "."
+    sleep 1
+  done
+  echo ""
+
+  if [ "$BOT_READY" = true ]; then
     SERVICE_INSTALLED=true
-    print_ok "systemd service installed and started"
+    BOT_NAME=$(journalctl --user -u "$SERVICE_NAME" --no-pager -n 10 2>/dev/null | grep "Bot online" | sed 's/.*Bot online as //' | head -1)
+    SESSIONS_COUNT=$(journalctl --user -u "$SERVICE_NAME" --no-pager -n 10 2>/dev/null | grep "Sessions:" | grep -oP '\d+' | head -1)
+    echo ""
+    print_ok "Connected to Discord as ${GREEN}${BOLD}${BOT_NAME}${NC}"
+    [ -n "$SESSIONS_COUNT" ] && [ "$SESSIONS_COUNT" -gt 0 ] && print_ok "$SESSIONS_COUNT conversation sessions ready to resume"
+  elif systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
+    SERVICE_INSTALLED=true
+    print_warn "Service is running but Discord connection is slow"
+    print_info "Check logs: journalctl --user -u $SERVICE_NAME -f"
   else
-    print_err "systemd service failed to start"
+    print_err "Service failed to start"
     echo -e "       Check: ${BOLD}journalctl --user -u $SERVICE_NAME --no-pager -n 20${NC}"
   fi
 
@@ -593,10 +614,26 @@ EOF
   launchctl unload "$PLIST_FILE" 2>/dev/null || true
   launchctl load "$PLIST_FILE" 2>/dev/null
 
-  sleep 3
-  if launchctl list | grep -q 'com.disclaude'; then
+  echo ""
+  echo -ne "       Connecting to Discord "
+  BOT_READY=false
+  for i in $(seq 1 20); do
+    if grep -q "Bot online" "$LOG_DIR/stdout.log" 2>/dev/null; then
+      BOT_READY=true
+      break
+    fi
+    echo -ne "."
+    sleep 1
+  done
+  echo ""
+
+  if [ "$BOT_READY" = true ]; then
     SERVICE_INSTALLED=true
-    print_ok "launchd service installed and started"
+    BOT_NAME=$(grep "Bot online" "$LOG_DIR/stdout.log" | tail -1 | sed 's/.*Bot online as //')
+    print_ok "Connected to Discord as ${GREEN}${BOLD}${BOT_NAME}${NC}"
+  elif launchctl list | grep -q 'com.disclaude'; then
+    SERVICE_INSTALLED=true
+    print_warn "Service is running but Discord connection is slow"
   else
     print_err "launchd service failed to start"
     echo -e "       Check: ${BOLD}cat $LOG_DIR/stderr.log${NC}"
@@ -611,11 +648,17 @@ fi
 echo ""
 
 if [ "$SERVICE_INSTALLED" = true ]; then
+  echo ""
   echo -e "  ${GREEN}${BOLD}════════════════════════════════════════════${NC}"
-  echo -e "  ${GREEN}${BOLD}  Bot is running!${NC}"
+  echo -e "  ${GREEN}${BOLD}  Setup complete! Bot is live on Discord.  ${NC}"
   echo -e "  ${GREEN}${BOLD}════════════════════════════════════════════${NC}"
   echo ""
-  echo -e "  Mention ${BOLD}@${NC}your-bot in Discord or DM it to start chatting."
+  echo -e "  ${BOLD}Try it now:${NC}"
+  echo -e "    1. Open Discord"
+  echo -e "    2. @mention your bot or DM it"
+  echo -e "    3. Say something — it will respond with streaming text"
+  echo ""
+  echo -e "  ${BOLD}Manage later:${NC} node disclaude.mjs"
   echo ""
 
   if [ "$OS" = "Linux" ]; then
