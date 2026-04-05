@@ -355,21 +355,60 @@ fi
 echo ""
 
 # --- Step 3: Set up workspace ---
-print_step 4 "Setting up workspace..."
-WORKSPACE="${WORKSPACE:-$DEFAULT_WORKSPACE}"
-mkdir -p "$WORKSPACE"
+print_step 4 "Setting up workspace & sessions..."
 
 if [ "$SETUP_CHOICE" = "1" ] && [ -d "$OPENCLAW_WORKSPACE" ]; then
-  COPIED=0
-  for f in SOUL.md MEMORY.md IDENTITY.md USER.md TOOLS.md AGENTS.md; do
-    if [ -f "$OPENCLAW_WORKSPACE/$f" ] && [ ! -f "$WORKSPACE/$f" ]; then
-      cp "$OPENCLAW_WORKSPACE/$f" "$WORKSPACE/$f"
-      print_ok "Copied $f from OpenClaw"
-      COPIED=$((COPIED + 1))
+  # Use OpenClaw workspace directly — no copying, same files, same Claude project dir
+  WORKSPACE="$OPENCLAW_WORKSPACE"
+  print_ok "Using existing OpenClaw workspace: $WORKSPACE"
+  print_info "Same workspace = same Claude CLI session storage (conversations continue)"
+
+  # Migrate session mappings: OpenClaw channel→session → Disclaude channel→session
+  OC_SESSIONS="$HOME/.openclaw/agents/jarvis/sessions/sessions.json"
+  if [ -f "$OC_SESSIONS" ]; then
+    SESSIONS_DIR="$HOME/.disclaude"
+    mkdir -p "$SESSIONS_DIR"
+    MIGRATED=$(python3 -c "
+import json, os, glob
+
+oc = json.load(open('$OC_SESSIONS'))
+project_dir = os.path.expanduser('~/.claude/projects/-home-simon--openclaw-workspace')
+existing_files = set()
+for f in glob.glob(f'{project_dir}/*.jsonl'):
+    existing_files.add(os.path.basename(f).replace('.jsonl',''))
+
+dc = {}
+for key, val in oc.items():
+    if not key.startswith('agent:jarvis:discord:'):
+        continue
+    parts = key.split(':')
+    channel_id = parts[-1]
+    sid = None
+    if isinstance(val, dict):
+        bindings = val.get('cliSessionBindings', {})
+        for provider, binding in bindings.items():
+            if isinstance(binding, dict) and binding.get('sessionId'):
+                sid = binding['sessionId']
+                break
+        if not sid:
+            sid = val.get('sessionId', '')
+    if sid and sid in existing_files:
+        dc[channel_id] = sid
+
+json.dump(dc, open('$SESSIONS_DIR/sessions.json', 'w'), indent=2)
+print(len(dc))
+" 2>/dev/null)
+    if [ -n "$MIGRATED" ] && [ "$MIGRATED" -gt 0 ]; then
+      print_ok "Migrated $MIGRATED conversation sessions from OpenClaw"
+      print_info "All existing channel conversations will continue where they left off"
+    else
+      print_info "No active sessions to migrate"
     fi
-  done
-  [ $COPIED -eq 0 ] && print_info "Workspace files already present"
+  fi
 else
+  # Fresh setup — create new workspace
+  WORKSPACE="$DEFAULT_WORKSPACE"
+  mkdir -p "$WORKSPACE"
   if [ ! -f "$WORKSPACE/SOUL.md" ]; then
     cat > "$WORKSPACE/SOUL.md" << 'SOUL'
 # SOUL.md — Bot Personality
@@ -378,9 +417,9 @@ Be genuinely helpful, not performatively helpful.
 Skip filler phrases — just help.
 Keep Discord responses concise and conversational.
 SOUL
-    print_ok "Created default SOUL.md"
+    print_ok "Created workspace with default SOUL.md"
   else
-    print_info "SOUL.md already exists"
+    print_info "Workspace already exists: $WORKSPACE"
   fi
 fi
 
