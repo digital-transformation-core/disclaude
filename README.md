@@ -187,6 +187,70 @@ Features planned or in consideration:
 
 ---
 
+## FAQ
+
+**Will Disclaude break my OpenClaw setup?**
+
+No. Disclaude only reads your OpenClaw config to copy the Discord token and workspace files. Nothing in `~/.openclaw/` is modified or deleted. The setup will explicitly ask before stopping OpenClaw, and you can decline — your config is saved but the bot won't start until you're ready.
+
+**Can I run both at the same time?**
+
+No — they share the same Discord bot token, so only one can connect. But switching is one command:
+
+```bash
+# Switch to Disclaude
+systemctl --user stop claude-gateway && systemctl --user start disclaude
+
+# Switch back to OpenClaw
+systemctl --user stop disclaude && systemctl --user start claude-gateway
+```
+
+**How do I fully uninstall Disclaude and go back to OpenClaw?**
+
+Option 1 — use the management panel:
+```bash
+node disclaude.mjs
+# Select "Uninstall & revert to OpenClaw"
+```
+
+Option 2 — manual:
+```bash
+# Stop and remove Disclaude service
+systemctl --user stop disclaude
+systemctl --user disable disclaude
+rm ~/.config/systemd/user/disclaude.service
+systemctl --user daemon-reload
+
+# Re-enable OpenClaw
+systemctl --user enable --now claude-gateway
+# or: systemctl --user enable --now openclaw-gateway
+```
+
+Your Disclaude sessions and workspace stay on disk at `~/.disclaude/` until you delete them.
+
+**Why did I get rate-limited with OpenClaw?**
+
+OpenClaw runs automated background sessions — cron jobs, heartbeat polling, watchdog checks — that spawn many `claude -p` calls per hour. Anthropic's servers detect this volume pattern and flag it as third-party app usage, which draws from your extra usage credits instead of your plan.
+
+Disclaude only runs when you send a message. No automation, no background sessions, no session spam. Same CLI, same auth, same model — just without the overhead that triggers the rate limit.
+
+**Does Anthropic know this is not a terminal session?**
+
+No. Each message runs `claude -p --model opus` — the exact same binary, auth, and flags as typing in your terminal. There's no orchestrator, no third-party header, no process spoofing. It's a genuine Claude Code CLI call, just triggered from Discord instead of your keyboard.
+
+**My bot shows "Thinking..." but never responds**
+
+Check the logs: `journalctl --user -u disclaude -f`. Common causes:
+- Claude CLI not authenticated: run `claude auth login`
+- Model rate-limited: wait a few minutes or switch to a different model via `node disclaude.mjs`
+- Large MEMORY.md causing context overflow: the bot truncates files to 8KB but very large workspaces can still overflow
+
+**Can I use non-Anthropic models?**
+
+Yes. Claude Code CLI supports third-party models. Run `node disclaude.mjs` → Switch model → select Ollama, DeepSeek, OpenAI, Google, or enter a custom model ID. You'll need the provider's API key set in your environment.
+
+---
+
 ## License
 
 MIT
