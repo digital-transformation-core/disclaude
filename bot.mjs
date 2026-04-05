@@ -297,7 +297,7 @@ const client = new Client({
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
   ],
-  partials: [Partials.Channel],
+  partials: [Partials.Channel, Partials.Message],
 });
 
 client.on("ready", () => {
@@ -307,6 +307,14 @@ client.on("ready", () => {
 });
 
 client.on("messageCreate", async (message) => {
+  // Fetch partial messages/channels (required for DMs)
+  if (message.partial) {
+    try { message = await message.fetch(); } catch { return; }
+  }
+  if (message.channel.partial) {
+    try { await message.channel.fetch(); } catch { return; }
+  }
+
   if (message.author.bot) return;
   if (ALLOWED_USER_ID && message.author.id !== ALLOWED_USER_ID) return;
 
