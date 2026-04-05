@@ -296,8 +296,10 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessageReactions,
+    GatewayIntentBits.DirectMessageTyping,
   ],
-  partials: [Partials.Channel, Partials.Message],
+  partials: [Partials.Channel, Partials.Message, Partials.User],
 });
 
 client.on("ready", () => {
@@ -316,9 +318,16 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.author.bot) return;
+
+  const isDM = message.channel.isDMBased?.() || !message.guild;
+
+  // Debug: log all incoming messages to diagnose DM issues
+  if (isDM) {
+    console.log(`[DM] ${message.author.username} (${message.author.id}): ${message.content?.slice(0, 50)}`);
+  }
+
   if (ALLOWED_USER_ID && message.author.id !== ALLOWED_USER_ID) return;
 
-  const isDM = !message.guild;
   const isThread = message.channel.isThread?.();
   const isMentioned = message.mentions.has(client.user);
   if (!isDM && !isThread && !isMentioned) return;
