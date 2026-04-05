@@ -160,11 +160,34 @@ Your OpenClaw config is left untouched. You can switch back anytime.
 ## Current limitations
 
 - **One message at a time per channel** — concurrent messages in the same channel are queued (different channels work in parallel)
-- **No scheduled tasks / cron** — no automated background polling or heartbeat checks
-- **No MCP loopback server** — Claude uses your globally configured MCP tools, not a gateway-managed tool server
-- **No multi-user support** — designed for single-user personal use (one `DISCORD_ALLOWED_USER`)
-- **No message history import** — existing OpenClaw conversation history doesn't carry over (sessions start fresh)
 - **Discord rate limits streaming** — message edits are capped at ~5/5s by Discord's API, so streaming updates every ~900ms
+- **No multi-user support** — designed for single-user personal use (one `DISCORD_ALLOWED_USER`)
+
+### What does NOT migrate from OpenClaw
+
+If you're coming from OpenClaw, the setup migrates your Discord token, workspace, sessions, and MCP tool servers automatically. However, these OpenClaw-specific features have no equivalent in the native Claude CLI and are **not available** in Disclaude:
+
+| Feature | Why it doesn't migrate | Workaround |
+|---------|----------------------|------------|
+| **memory-enhanced plugin** | OpenClaw framework plugin, not a Claude CLI plugin. Handles observation DB, short-term memory, thread summarization, insight extraction. | Use [claude-mem](https://github.com/thedotmack/claude-mem) (Claude CLI plugin) — it provides `save_memory`, `search`, `get_observations` and works automatically with Disclaude. |
+| **Browser plugin** | OpenClaw-managed headless browser with dedicated control server. | Claude CLI has built-in `WebFetch` and `WebSearch` tools. For full browser control, configure a browser MCP server. |
+| **Cron / scheduled tasks** | Intentionally excluded — automated background sessions caused Anthropic rate-limiting. | Not planned. Use system cron to send messages via Discord API if needed. |
+| **Heartbeat / watchdog polling** | Automated health checks that spawned sessions every 30 min. | Not planned — this was the primary cause of rate-limit flags. |
+| **MCP loopback server** | OpenClaw's gateway-managed tool server (sessions_send, sessions_list, subagents, image_generate, etc.). | Claude CLI has built-in subagent support. Other tools available via MCP servers you configure in `~/.claude/settings.json`. |
+| **Multi-channel routing** | OpenClaw routed messages across Discord, Telegram, Slack, etc. simultaneously. | Disclaude is Discord-only for now. Other channels on the roadmap. |
+| **Auto-reply / delivery system** | Smart reply queuing, delivery retry, typing TTL management. | Disclaude handles replies directly — simpler but no retry on failure. |
+| **Plugin hook system** | `message_received`, `thread_closed`, `reaction_received` hooks for custom behavior. | Not available. Bot logic is in `bot.mjs` — modify directly if needed. |
+| **Config schema UI** | Web-based configuration panel for gateway settings. | Use `node disclaude.mjs` TUI panel or edit `.env` directly. |
+
+### What DOES work natively (no migration needed)
+
+These are Claude CLI features, not OpenClaw features — they work automatically:
+
+- **Claude CLI plugins** (claude-mem, typescript-lsp, rust-analyzer-lsp) — loaded from `~/.claude/plugins/`
+- **MCP servers** configured in `~/.claude/settings.json` — available in every session
+- **All Claude Code tools** — Bash, Read, Write, Edit, Grep, Glob, WebFetch, WebSearch, Agent (subagents), etc.
+- **Session persistence** — Claude CLI stores conversation history on disk, resumed via `--resume`
+- **CLAUDE.md / project rules** — loaded automatically from the workspace directory
 
 ## Roadmap
 
