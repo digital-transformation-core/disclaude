@@ -149,8 +149,8 @@ When the user says /new, start fresh (the session will be reset).${locationHint}
 }
 
 // --- Attachment handling ---
-const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]);
-const ALLOWED_EXTS = new Set([...IMAGE_EXTS, "txt", "md", "json", "csv", "js", "ts", "py", "html", "css", "xml", "yaml", "yml", "toml", "sh", "log", "pdf"]);
+// Accept ALL file types — Claude CLI's Read tool can handle anything
+const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25MB (Discord's limit)
 
 async function downloadAttachments(attachments) {
   const files = [];
@@ -158,29 +158,27 @@ async function downloadAttachments(attachments) {
   mkdirSync(tempDir, { recursive: true });
 
   for (const att of attachments.values()) {
-    const ext = att.name?.split(".").pop()?.toLowerCase() || "";
-    if (!ALLOWED_EXTS.has(ext)) continue;
-    if (att.size > 10 * 1024 * 1024) continue; // Skip >10MB
+    if (att.size > MAX_ATTACHMENT_SIZE) continue;
 
-    const filePath = join(tempDir, att.name);
+    const filePath = join(tempDir, att.name || `attachment-${Date.now()}`);
     try {
       const res = await fetch(att.url);
       if (!res.ok) continue;
       await pipeline(res.body, createWriteStream(filePath));
-      files.push({ path: filePath, name: att.name, isImage: IMAGE_EXTS.has(ext) });
+      files.push({ path: filePath, name: att.name || "attachment", size: att.size });
     } catch {}
   }
 
-  return { files, cleanup: () => {
+  return { files, tempDir, cleanup: () => {
     for (const f of files) { try { unlinkSync(f.path); } catch {} }
-    try { unlinkSync(tempDir); } catch {} // rmdir
+    try { require("node:fs").rmdirSync(tempDir); } catch {}
   }};
 }
 
 // --- Run claude with real-time streaming ---
 const busy = new Set();
 
-function runClaude(channelId, text, systemPrompt, onDelta, imagePaths) {
+function runClaude(channelId, text, systemPrompt, onDelta, addDirs) {
   return new Promise((resolve) => {
     const existingSession = getSessionId(channelId);
     const isResume = !!existingSession;
@@ -200,10 +198,10 @@ function runClaude(channelId, text, systemPrompt, onDelta, imagePaths) {
       args.push("--append-system-prompt", systemPrompt);
     }
 
-    // Add image files
-    if (imagePaths?.length > 0) {
-      for (const img of imagePaths) {
-        args.push("--image", img);
+    // Grant access to additional directories (e.g. temp attachment dir)
+    if (addDirs?.length > 0) {
+      for (const dir of addDirs) {
+        args.push("--add-dir", dir);
       }
     }
 
@@ -424,24 +422,15 @@ client.on("messageCreate", async (message) => {
   try {
     // Download attachments
     let attachmentData = null;
-    let imagePaths = [];
+    let addDirs = [];
     if (hasAttachments) {
       attachmentData = await downloadAttachments(message.attachments);
-      const images = attachmentData.files.filter(f => f.isImage);
-      const textFiles = attachmentData.files.filter(f => !f.isImage);
-      imagePaths = images.map(f => f.path);
-
-      // Append text file contents to the prompt
-      for (const f of textFiles) {
-        try {
-          const content = readFileSync(f.path, "utf8");
-          text += `\n\n--- File: ${f.name} ---\n${content}`;
-        } catch {}
+      if (attachmentData.files.length > 0) {
+        addDirs = [attachmentData.tempDir];
+        const fileList = attachmentData.files.map(f => `- ${f.path} (${f.name}, ${(f.size / 1024).toFixed(1)}KB)`).join("\n");
+        text = (text || "Analyze the attached file(s).") + `\n\nAttached files:\n${fileList}\n\nRead and process these files.`;
+        console.log(`[${label}] ${attachmentData.files.length} file(s) attached`);
       }
-
-      if (images.length > 0) console.log(`[${label}] ${images.length} image(s) attached`);
-      if (textFiles.length > 0) console.log(`[${label}] ${textFiles.length} text file(s) attached`);
-      if (!text) text = "Describe the attached file(s).";
     }
 
     let replyMsg;
@@ -462,7 +451,7 @@ client.on("messageCreate", async (message) => {
     };
     let editTimer = setInterval(doEdit, STREAM_EDIT_MS);
 
-    let result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; }, imagePaths);
+    let result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; }, addDirs);
 
     clearInterval(editTimer);
 
@@ -480,7 +469,7 @@ client.on("messageCreate", async (message) => {
       lastShown = "";
       await replyMsg.edit("\uD83D\uDD04 Retrying...").catch(() => {});
       editTimer = setInterval(doEdit, STREAM_EDIT_MS);
-      result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; }, imagePaths);
+      result = await runClaude(channelId, text, systemPrompt, (t) => { currentText = t; }, addDirs);
       clearInterval(editTimer);
       if (result.sessionId && !result.error) {
         setSessionId(channelId, result.sessionId);
